@@ -7,9 +7,9 @@
 # You are responsible for all testing, validation, and security.
 #
 # PURPOSE: Demonstrates integration between Palo Alto Networks AI Security API
-# and Perplexity AI for development and testing purposes only.
+# and Anthropic Claude AI for development and testing purposes only.
 #
-# WORKFLOW: User Input → Security Scan → Perplexity AI Processing → Response
+# WORKFLOW: User Input → Security Scan → Claude AI Processing → Response
 # ===========================================================================
 
 # Import required libraries
@@ -18,7 +18,7 @@ import json      # For converting Python data to/from JSON format
 import os        # For reading environment variables from system
 import uuid      # For generating unique transaction IDs
 import httpx     # Special HTTP client for requests
-from openai import OpenAI  # Using OpenAI library for Perplexity API compatibility
+from anthropic import Anthropic  # Official Anthropic library for Claude API
 
 # Load environment variables from .env file if it exists
 try:
@@ -342,25 +342,25 @@ def main():
     THE COMPLETE WORKFLOW:
     1. 🔑 SETUP PHASE: Checks that you have all the required passwords and settings
        - Verifies your Palo Alto Networks security credentials
-       - Verifies your Perplexity AI credentials  
+       - Verifies your Claude AI credentials  
        - Makes sure everything is properly configured
 
     2. 🧠 INITIALIZATION PHASE: Starts up all the necessary services
        - Connects to Palo Alto's security scanning service
-       - Connects to Perplexity AI service
+       - Connects to Claude AI service
        - Prepares everything for chatting
 
     3. 💬 CHAT LOOP PHASE: Handles the actual conversation
        - Waits for you to type a message
        - Sends your message through security screening first
-       - If safe: forwards to Perplexity AI for a smart response
+       - If safe: forwards to Claude AI for a smart response
        - If dangerous: blocks the message and warns you
 
     🛡️ SECURITY-FIRST ARCHITECTURE:
     This chatbot follows a "guilty until proven innocent" approach:
     - EVERY message goes through security scanning first (no exceptions!)
     - Dangerous messages are immediately blocked (better safe than sorry!)  
-    - Only verified-safe messages get processed by Perplexity AI
+    - Only verified-safe messages get processed by Claude AI
     - No chat history is saved (keeps things private and secure)
     
     WHY THIS APPROACH MATTERS:
@@ -374,7 +374,7 @@ def main():
     print("=" * 60)
     print("⚠️ DISCLAIMER: NOT officially supported by Palo Alto Networks!")
     print("🛡️ Security Layer: Palo Alto Networks Runtime Security API (testing)")
-    print("🧠 AI Processing: Perplexity AI Models")
+    print("🧠 AI Processing: Anthropic Claude Models")
     print("=" * 60)
     print("\nConfiguration: Each message is independently scanned")
     print("No conversation history is stored for enhanced security")
@@ -414,34 +414,34 @@ def main():
     # ║                                                                            ║
     # ║ 🧠 CHATBOT COMPONENT: This section checks your Perplexity credentials     ║
     # ║                                                                            ║
-    # ║ What's happening: We're verifying you have access to Perplexity AI        ║
+    # ║ What's happening: We're verifying you have access to Claude AI            ║
     # ║ service. This is what will generate intelligent responses to your         ║
     # ║ messages AFTER they pass Palo Alto's security screening.                  ║
     # ║                                                                            ║
-    # ║ Note: Without Perplexity credentials, security scanning still works,      ║
+    # ║ Note: Without Claude credentials, security scanning still works,          ║
     # ║ but you won't get AI responses to your safe messages.                     ║
     # ╚════════════════════════════════════════════════════════════════════════════╝
-    print("\n🔑 VALIDATING PERPLEXITY AI CREDENTIALS...")
+    print("\n🔑 VALIDATING CLAUDE AI CREDENTIALS...")
 
-    # Perplexity API key
-    perplexity_key = os.getenv("PERPLEXITY_API_KEY")
+    # Claude API key
+    claude_key = os.getenv("ANTHROPIC_API_KEY")
 
-    # Validate Perplexity API key is present
-    if not perplexity_key:
-        print("❌ ERROR: Missing PERPLEXITY_API_KEY environment variable")
-        print("   This variable must contain your Perplexity API key")
-        print("   Set it using: export PERPLEXITY_API_KEY='your-api-key'")
-        print("   Get your API key from: https://www.perplexity.ai/settings/api")
+    # Validate Claude API key is present
+    if not claude_key:
+        print("❌ ERROR: Missing ANTHROPIC_API_KEY environment variable")
+        print("   This variable must contain your Claude API key")
+        print("   Set it using: export ANTHROPIC_API_KEY='your-api-key'")
+        print("   Get your API key from: https://console.anthropic.com/")
         return
 
-    print("✅ Perplexity AI credentials validated")
+    print("✅ Claude AI credentials validated")
 
     # ╔════════════════════════════════════════════════════════════════════════════╗
-    # ║                   🧠 PERPLEXITY AI CLIENT INITIALIZATION                   ║
+    # ║                    🧠 CLAUDE AI CLIENT INITIALIZATION                      ║
     # ║                                                                            ║
     # ║ 🤖 CHATBOT COMPONENT: This section sets up the AI chatbot brain           ║
     # ║                                                                            ║
-    # ║ What's happening: We're connecting to Perplexity's AI service so that     ║
+    # ║ What's happening: We're connecting to Claude's AI service so that         ║
     # ║ when messages pass security screening, we can get intelligent responses.   ║
     # ║                                                                            ║
     # ║ Important: This AI connection only gets used AFTER Palo Alto says a       ║
@@ -449,26 +449,23 @@ def main():
     # ║                                                                            ║
     # ║ Think of it like: Security Guard → (if safe) → Smart AI Assistant         ║
     # ╚════════════════════════════════════════════════════════════════════════════╝
-    print("\n🧠 INITIALIZING PERPLEXITY AI CLIENT...")
+    print("\n🧠 INITIALIZING CLAUDE AI CLIENT...")
 
-    perplexity_client = None
+    claude_client = None
 
     try:
-        # Initialize the Perplexity client using OpenAI-compatible interface
-        # Simple initialization without custom http client to avoid conflicts
-        perplexity_client = OpenAI(
-            api_key=perplexity_key,
-            base_url="https://api.perplexity.ai",
-            http_client=httpx.Client()
+        # Initialize the Claude client using official Anthropic library
+        claude_client = Anthropic(
+            api_key=claude_key
         )
-        print("✅ Perplexity AI client initialized successfully")
+        print("✅ Claude AI client initialized successfully")
 
     except Exception as e:
         # Handle client initialization failures
-        print(f"❌ Failed to initialize Perplexity AI client: {e}")
-        print("   Perplexity functionality will be unavailable")
+        print(f"❌ Failed to initialize Claude AI client: {e}")
+        print("   Claude functionality will be unavailable")
         print("   Note: The security scanning will still work perfectly!")
-        perplexity_client = None
+        claude_client = None
 
     # INTERACTIVE CHAT LOOP INITIALIZATION
     print("\n" + "=" * 60)
@@ -546,7 +543,7 @@ def main():
         # ║                                                                          ║
         # ║ The Decision Tree:                                                       ║
         # ║ - If Palo Alto says "malicious" or "block" → 🚫 Block the message      ║
-        # ║ - If Palo Alto says "benign" and "allow" → ✅ Send to Perplexity AI    ║
+        # ║ - If Palo Alto says "benign" and "allow" → ✅ Send to Claude AI       ║
         # ║ - If something unexpected → ⚠️ Show warning and ask user to retry       ║
         # ╚══════════════════════════════════════════════════════════════════════════╝
         if scan_result:
@@ -591,81 +588,80 @@ def main():
                 print("=" * 40)
 
                 # ╔══════════════════════════════════════════════════════════════════════════╗
-                # ║                       🤖 PERPLEXITY AI PROCESSING                       ║
+                # ║                        🤖 CLAUDE AI PROCESSING                          ║
                 # ║                                                                          ║
                 # ║ 🧠 CHATBOT COMPONENT: This is where the AI magic happens!              ║
                 # ║                                                                          ║
                 # ║ What's happening: Your message passed Palo Alto's security screening   ║
                 # ║ and has been approved as safe. NOW we can finally send it to           ║
-                # ║ Perplexity AI to get an intelligent response.                          ║
+                # ║ Claude AI to get an intelligent response.                              ║
                 # ║                                                                          ║
                 # ║ Key Security Note: Only messages that Palo Alto approved ever          ║
                 # ║ reach this point. Dangerous messages are blocked above and never       ║
                 # ║ make it to the AI processing.                                           ║
                 # ║                                                                          ║
-                # ║ Flow: Security Approved ✅ → Send to Perplexity → Get Smart Response   ║
+                # ║ Flow: Security Approved ✅ → Send to Claude → Get Smart Response       ║
                 # ╚══════════════════════════════════════════════════════════════════════════╝
-                if perplexity_client:
+                if claude_client:
                     print("\n🧠 AI PROCESSING PHASE")
                     print("=" * 50)
-                    print("Generating Perplexity response...")
+                    print("Generating Claude response...")
 
                     try:
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                        # 🚀 SEND APPROVED MESSAGE TO PERPLEXITY AI
+                        # 🚀 SEND APPROVED MESSAGE TO CLAUDE AI
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         # This is where we finally send your security-approved message to 
-                        # Perplexity AI. Perplexity will search the web and generate an
-                        # intelligent, up-to-date response based on current information.
-                        response = perplexity_client.chat.completions.create(
-                            model="llama-3.1-sonar-small-128k-online",  # 🧠 Perplexity's AI model with web search
+                        # Claude AI. Claude will analyze your request and generate an
+                        # intelligent, thoughtful response using advanced reasoning.
+                        response = claude_client.messages.create(
+                            model="claude-3-haiku-20240307",  # 🧠 Claude's fast and efficient AI model
+                            max_tokens=800,      # 📏 Maximum length of AI response
+                            temperature=0.7,     # 🎚️ Controls creativity (0.0=factual, 1.0=creative)
                             messages=[
                                 {
                                     "role": "user",           # 👤 This identifies the message as coming from a user
                                     "content": user_input     # 💬 Your actual (security-approved) message
                                 }
-                            ],
-                            max_tokens=800,      # 📏 Maximum length of AI response
-                            temperature=0.7,     # 🎚️ Controls creativity (0.0=factual, 1.0=creative)
-                            stream=False         # 📡 Get complete response at once (not streaming)
+                            ]
                         )
 
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                        # 📤 EXTRACT AND DISPLAY PERPLEXITY'S AI RESPONSE
+                        # 📤 EXTRACT AND DISPLAY CLAUDE'S AI RESPONSE
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                        # Perplexity sends back a complex response object. We need to extract
+                        # Claude sends back a complex response object. We need to extract
                         # just the actual text response that the user wants to see.
-                        ai_response = response.choices[0].message.content
+                        ai_response = response.content[0].text
 
                         # 🎉 SUCCESS! Display the final AI response to the user
                         # At this point, your message has been:
                         # 1. ✅ Security scanned by Palo Alto (passed)
-                        # 2. 🧠 Processed by Perplexity AI (intelligent response generated)  
+                        # 2. 🧠 Processed by Claude AI (intelligent response generated)  
                         # 3. 📤 Delivered back to you safely
                         print("\n" + "=" * 60)
-                        print("🤖 PERPLEXITY RESPONSE:")
+                        print("🤖 CLAUDE RESPONSE:")
                         print("=" * 60)
                         print(ai_response)
                         print("=" * 60)
 
-                    except Exception as perplexity_err:
+                    except Exception as claude_err:
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                        # ❌ HANDLE PERPLEXITY AI ERRORS
+                        # ❌ HANDLE CLAUDE AI ERRORS
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                        # If something goes wrong with Perplexity AI (server down, quota exceeded,
+                        # If something goes wrong with Claude AI (server down, quota exceeded,
                         # API changes), we handle it gracefully and inform the user.
-                        print(f"\n❌ PERPLEXITY ERROR: {perplexity_err}")
+                        print(f"\n❌ CLAUDE ERROR: {claude_err}")
                         print("🤖 Response: A technical error occurred during")
                         print("   AI processing. Please try again later.")
 
                 else:
                     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                    # ⚠️ PERPLEXITY AI NOT AVAILABLE
+                    # ⚠️ CLAUDE AI NOT AVAILABLE
                     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                    # This happens if Perplexity AI couldn't be initialized (wrong API key,
+                    # This happens if Claude AI couldn't be initialized (wrong API key,
                     # service down, etc.). The security scanning still worked, but we can't
                     # generate AI responses.
-                    print("\n⚠️  PERPLEXITY UNAVAILABLE")
+                    print("\n⚠️  CLAUDE UNAVAILABLE")
                     print("🤖 Response: Your message passed security screening,")
                     print("   but AI processing is currently unavailable due to")
                     print("   configuration issues.")

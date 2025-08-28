@@ -1,4 +1,4 @@
-# 🛡️ Secure AI Chatbot with Perplexity AI
+# 🛡️ Secure AI Chatbot with Claude AI
 
 ## 🚨 Critical Disclaimers
 
@@ -14,7 +14,7 @@
 
 ## 🌟 Overview
 
-**🔒 Development Security Demo**: Every message is scanned for threats before AI processing, demonstrating integration between Palo Alto Networks APIs and Perplexity AI for development and testing purposes.
+**🔒 Development Security Demo**: Every message is scanned for threats before AI processing, demonstrating integration between Palo Alto Networks APIs and Claude AI for development and testing purposes.
 
 ---
 
@@ -29,9 +29,9 @@
 
 ### 🧠 **Intelligent AI Responses**  
 
-- Powered by **Perplexity AI** with web search capabilities
-- **Up-to-date information** from real-time web searches
-- **Contextual, accurate responses** backed by current data
+- Powered by **Anthropic Claude** with advanced reasoning capabilities
+- **Thoughtful, nuanced responses** with sophisticated understanding
+- **Ethical AI processing** with built-in safety considerations
 - **Professional-grade AI processing** with reliable performance
 
 ### 📊 **Development/Testing Features**
@@ -49,7 +49,7 @@
 
 ```bash
 # Clone or extract the secure chatbot files
-cd secure-chatbot-perplexity
+cd secure-chatbot-claude
 
 # Install required Python packages
 pip install -r requirements.txt
@@ -70,25 +70,25 @@ cp .env.example .env
 PANW_AI_SEC_API_KEY=your_palo_alto_api_key_here
 PANW_AI_SEC_PROFILE_NAME=your_security_profile_name
 
-# Perplexity AI
-PERPLEXITY_API_KEY=your_perplexity_api_key_here
+# Anthropic Claude AI
+ANTHROPIC_API_KEY=your_claude_api_key_here
 ```
 
 ### **Step 3: Run the Chatbot**
 
 ```bash
 # Basic version (Direct HTTP API)
-python3 secure_chatbot_perplexity_api.py
+python3 secure_chatbot_claude_api.py
 
 # Advanced version (Python SDK with enhanced features)
-python3 secure_chatbot_perplexity_sdk.py
+python3 secure_chatbot_claude_sdk.py
 ```
 
 ### **Step 4: Start Chatting Safely!**
 
 - Type your questions naturally
 - Each message gets security scanned automatically
-- Safe messages get intelligent Perplexity AI responses with web search
+- Safe messages get intelligent Claude AI responses with advanced reasoning
 - Dangerous messages are blocked with detailed explanations
 
 ---
@@ -190,9 +190,9 @@ ACT:      Immediate blocking or forwarding to AI processing
 ## 📁 Project Structure
 
 ```
-secure-chatbot-perplexity/
-├── 🚀 secure_chatbot_perplexity_api.py     # Main chatbot (HTTP API)
-├── 🛡️ secure_chatbot_perplexity_sdk.py     # Advanced chatbot (Python SDK)
+secure-chatbot-claude/
+├── 🚀 secure_chatbot_claude_api.py        # Main chatbot (HTTP API)
+├── 🛡️ secure_chatbot_claude_sdk.py        # Advanced chatbot (Python SDK)
 ├── 🔧 requirements.txt                     # Python dependencies
 ├── 📝 .env.example                         # Environment template
 ├── 📖 README.md                            # This documentation
@@ -376,11 +376,11 @@ Solutions:
 ### **AI Model Selection**
 
 ```python
-# Available Perplexity Models
+# Available Claude Models
 models = [
-    "llama-3.1-sonar-small-128k-online",    # Fast, cost-effective
-    "llama-3.1-sonar-large-128k-online",    # Higher quality responses
-    "llama-3.1-sonar-huge-128k-online",     # Maximum capability
+    "claude-3-haiku-20240307",      # Fast, cost-effective
+    "claude-3-sonnet-20240229",     # Balanced performance and quality
+    "claude-3-opus-20240229",       # Maximum capability and reasoning
 ]
 ```
 
@@ -399,7 +399,7 @@ models = [
 
 - **Technical Support**: Contact your technical team or integrator
 - **Palo Alto Networks**: This tool is NOT officially supported - contact them directly for official solutions
-- **Perplexity AI**: API support through their developer portal
+- **Anthropic Claude**: API support through their developer portal
 
 ### **Maintenance Schedule**
 
@@ -441,7 +441,7 @@ models = [
 
 - Initial development/testing release
 - Full Palo Alto Networks AI Security integration
-- Perplexity AI with web search capabilities
+- Claude AI with advanced reasoning capabilities
 - Comprehensive security scanning and threat detection
 
 ### **Planned Updates**
