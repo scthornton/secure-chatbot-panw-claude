@@ -615,7 +615,7 @@ def main():
                         # Claude AI. Claude will analyze your request and generate an
                         # intelligent, thoughtful response using advanced reasoning.
                         response = claude_client.messages.create(
-                            model="claude-3-haiku-20240307",  # 🧠 Claude's fast and efficient AI model
+                            model="claude-sonnet-4-5-20250929",  # 🧠 Claude Sonnet 4.5 - Smartest model for complex agents and coding
                             max_tokens=800,      # 📏 Maximum length of AI response
                             temperature=0.7,     # 🎚️ Controls creativity (0.0=factual, 1.0=creative)
                             messages=[

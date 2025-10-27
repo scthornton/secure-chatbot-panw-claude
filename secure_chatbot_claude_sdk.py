@@ -716,7 +716,7 @@ async def main():
 
                     try:
                         response = claude_client.messages.create(
-                            model="claude-3-haiku-20240307",
+                            model="claude-sonnet-4-5-20250929",  # Claude Sonnet 4.5 - Smartest model for complex agents and coding
                             max_tokens=800,
                             temperature=0.7,
                             messages=[
