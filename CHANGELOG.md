@@ -4,7 +4,7 @@
 
 ### Added
 - Secure Python chatbot with PANW AIRS protection
-- Claude API integration
+- Perplexity API integration
 - Deployment guide and customer package
 
-[Unreleased]: https://github.com/scthornton/secure-chatbot-panw-claude/commits/main
+[Unreleased]: https://github.com/scthornton/secure-chatbot-panw-perplexity/commits/main
