@@ -105,14 +105,16 @@ python3 secure_chatbot_claude_sdk.py
 
 **⚠️ Development Note**: This is an independent testing tool. Contact Palo Alto Networks directly for official enterprise solutions and support.
 
-### **Perplexity AI**
+### **Anthropic Claude**
 
-1. **Visit**: [Perplexity API Settings](https://www.perplexity.ai/settings/api)
-2. **Create Account**: Sign up for Perplexity Pro if needed
-3. **Generate API Key**: Create your API key (starts with `pplx-`)
-4. **Choose Plan**: Select appropriate plan for your usage volume
+1. **Visit**: [Anthropic Console](https://console.anthropic.com/)
+2. **Create Account**: Sign up for an Anthropic API account
+3. **Generate API Key**: Create your API key (starts with `sk-ant-`)
+4. **Set as `ANTHROPIC_API_KEY`**: Put it in your `.env` file
 
-**Pricing Note**: Perplexity charges per API request. Monitor usage and set appropriate limits.
+**Model Note**: The chatbot defaults to `claude-sonnet-5`. Set `ANTHROPIC_MODEL` in your `.env` to use a different model.
+
+**Pricing Note**: Anthropic charges per token. Monitor usage and set appropriate limits.
 
 ---
 
@@ -142,10 +144,10 @@ python3 secure_chatbot_claude_sdk.py
                  │         │
                  ▼         ▼
       ┌─────────────┐ ┌─────────────────────────────────┐
-      │   🚫 BLOCK  │ │    🧠 PERPLEXITY AI PROCESSING  │
+      │   🚫 BLOCK  │ │    🧠 CLAUDE AI PROCESSING      │
       │   MESSAGE   │ │                                 │
-      │             │ │  • Web Search Integration        │
-      │   Warn User │ │  • Real-time Information        │
+      │             │ │  • Advanced Reasoning            │
+      │   Warn User │ │  • Long Context                 │
       │   Show Threat│ │  • Intelligent Responses        │
       │   Details    │ │  • Contextual Understanding     │
       └─────────────┘ └─────────────┬───────────────────┘

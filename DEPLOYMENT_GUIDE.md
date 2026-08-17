@@ -69,7 +69,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Verify installation
-python3 -c "import requests, openai, aisecurity; print('All dependencies installed successfully')"
+python3 -c "import requests, anthropic, aisecurity; print('All dependencies installed successfully')"
 ```
 
 ### **3. Configuration Management**

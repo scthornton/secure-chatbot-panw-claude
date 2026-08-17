@@ -36,6 +36,11 @@ except Exception as e:
     print(f"⚠️ Could not load .env file: {e}")
 
 
+# Claude model to use. Override with the ANTHROPIC_MODEL environment variable
+# (or a line in .env) if you want a different model without editing the code.
+CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+
+
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║                    🛡️ PALO ALTO NETWORKS SECURITY SECTION                 ║
 # ║                                                                            ║
@@ -615,7 +620,7 @@ def main():
                         # Claude AI. Claude will analyze your request and generate an
                         # intelligent, thoughtful response using advanced reasoning.
                         response = claude_client.messages.create(
-                            model="claude-sonnet-4-5-20250929",  # 🧠 Claude Sonnet 4.5 - Smartest model for complex agents and coding
+                            model=CLAUDE_MODEL,  # 🧠 Claude model ID, defaults to claude-sonnet-5
                             max_tokens=800,      # 📏 Maximum length of AI response
                             temperature=0.7,     # 🎚️ Controls creativity (0.0=factual, 1.0=creative)
                             messages=[

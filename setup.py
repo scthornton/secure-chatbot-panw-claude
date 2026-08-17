@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-🧪 DEVELOPMENT/TESTING CHATBOT WITH PERPLEXITY - SETUP SCRIPT
-============================================================
+🧪 DEVELOPMENT/TESTING CHATBOT WITH ANTHROPIC CLAUDE - SETUP SCRIPT
+=================================================================
 
 ⚠️ DISCLAIMER: This is NOT an official Palo Alto Networks tool!
 This is an independent development project for testing purposes only.
@@ -21,7 +21,7 @@ from pathlib import Path
 
 def print_header():
     """Display setup header"""
-    print("🧪 DEVELOPMENT/TESTING CHATBOT WITH PERPLEXITY - SETUP")
+    print("🧪 DEVELOPMENT/TESTING CHATBOT WITH ANTHROPIC CLAUDE - SETUP")
     print("=" * 60)
     print("⚠️ Setting up your development/testing chatbot...")
     print("⚠️ NOT officially supported by Palo Alto Networks!")
@@ -94,7 +94,7 @@ def setup_environment():
             print("   Required keys:")
             print("   - PANW_AI_SEC_API_KEY (from Palo Alto Networks)")
             print("   - PANW_AI_SEC_PROFILE_NAME (your security profile)")
-            print("   - PERPLEXITY_API_KEY (from Perplexity AI)")
+            print("   - ANTHROPIC_API_KEY (from Anthropic)")
             return True
         except Exception as e:
             print(f"❌ Failed to create .env file: {e}")
@@ -132,7 +132,7 @@ def validate_setup():
         import json
         import uuid
         import httpx
-        from openai import OpenAI
+        from anthropic import Anthropic
         print("✅ Core packages imported successfully")
         
         # Test environment file
@@ -163,14 +163,14 @@ def display_next_steps():
     print("1. 🔑 CONFIGURE API KEYS:")
     print("   Edit the .env file with your actual API keys:")
     print("   - Get Palo Alto key from: https://apps.paloaltonetworks.com/")
-    print("   - Get Perplexity key from: https://www.perplexity.ai/settings/api")
+    print("   - Get Anthropic key from: https://console.anthropic.com/")
     
     print("\n2. 🚀 RUN THE CHATBOT:")
     print("   Basic version:")
-    print("   python3 secure_chatbot_perplexity_api.py")
+    print("   python3 secure_chatbot_claude_api.py")
     print()
     print("   Advanced version (with Python SDK):")
-    print("   python3 secure_chatbot_perplexity_sdk.py")
+    print("   python3 secure_chatbot_claude_sdk.py")
     
     print("\n3. 📚 READ DOCUMENTATION:")
     print("   - README.md - Complete user guide")
