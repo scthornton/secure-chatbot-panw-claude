@@ -17,28 +17,37 @@ import requests  # For making HTTP requests to web APIs
 import json      # For converting Python data to/from JSON format
 import os        # For reading environment variables from system
 import uuid      # For generating unique transaction IDs
-import httpx     # Special HTTP client for requests
+import getpass   # For a stable app_user value in scan metadata
 from anthropic import Anthropic  # Official Anthropic library for Claude API
 
-# Load environment variables from .env file if it exists
+# Load credentials from a .env file if one is present. python-dotenv handles
+# quoting, blank lines, and "export VAR=..." syntax, and real environment
+# variables always win over .env values (the previous hand-rolled loader did
+# the opposite and silently overwrote exported variables).
 try:
-    from pathlib import Path
-    env_file = Path(".env")
-    if env_file.exists():
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    os.environ[key] = value
+    from dotenv import load_dotenv
+    if load_dotenv():
         print("✅ Loaded environment variables from .env file")
-except Exception as e:
-    print(f"⚠️ Could not load .env file: {e}")
-
+except ImportError:
+    pass  # python-dotenv is optional; export the variables yourself instead
 
 # Claude model to use. Override with the ANTHROPIC_MODEL environment variable
 # (or a line in .env) if you want a different model without editing the code.
-CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+# Model IDs retire over time; check https://docs.anthropic.com/en/docs/about-claude/models
+CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+
+# Prisma AIRS regional endpoint. US is the default; set PANW_AI_SEC_ENDPOINT to
+# the EU (service-de), India (service-in), or Singapore (service-sg) host when
+# your API key was issued in that region. Keys are region-specific.
+PANW_AI_SEC_ENDPOINT = os.getenv(
+    "PANW_AI_SEC_ENDPOINT", "https://service.api.aisecurity.paloaltonetworks.com"
+).rstrip("/")
+
+# Metadata attached to every scan. app_name and app_user show up in the Strata
+# Cloud Manager session and violation views, so set them to something you can
+# recognize when you look at the logs.
+APP_NAME = os.getenv("PANW_AI_SEC_APP_NAME", "secure-chatbot-claude")
+APP_USER = os.getenv("PANW_AI_SEC_APP_USER", getpass.getuser())
 
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
@@ -55,14 +64,20 @@ CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 # ║ Think of it like: SECURITY CHECKPOINT → Then maybe chatbot                ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
 
-def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="https://service.api.aisecurity.paloaltonetworks.com"):
+def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url=None, response=None):
     """
     🛡️ SECURITY SCANNER FUNCTION - THE GUARDIAN OF YOUR CHATBOT
-    
+
     WHAT THIS FUNCTION DOES:
     Think of this function as a security guard that examines every message before
     it reaches the AI. Just like airport security checks your luggage, this function
     checks your text messages for any dangerous or inappropriate content.
+
+    It is called twice per turn: once with only the user's prompt (before the
+    LLM sees it) and once with the prompt plus the LLM's response (before the
+    user sees it). Pass the model output in `response` for the second call.
+    Prisma AIRS evaluates a response only when you send one; it does not
+    predict what the model will say.
 
     HOW IT PROTECTS YOU:
     1. 🔍 SCANS every word and phrase in your message
@@ -81,7 +96,9 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
     - prompt: The message you want to check (like "Hello, how are you?")
     - api_key: Your secret password to access Palo Alto's security service
     - ai_profile_name: The name of your security ruleset/configuration
-    - base_url: The web address of Palo Alto's security servers
+    - base_url: The web address of Palo Alto's security servers (defaults to
+      PANW_AI_SEC_ENDPOINT, which defaults to the US region)
+    - response: Optional LLM output to scan together with the prompt
 
     WHAT YOU GET BACK:
     - A detailed report telling you if the message is safe or dangerous
@@ -94,6 +111,7 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # This part figures out WHERE to send your message for security scanning.
     # It's like writing the address on an envelope before mailing it.
+    base_url = (base_url or PANW_AI_SEC_ENDPOINT).rstrip("/")
     url = f"{base_url}/v1/scan/sync/request"
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -121,20 +139,26 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # This creates the actual "package" we're sending to Palo Alto's security service.
     # It contains your message plus information about what security rules to apply.
+    content = {"prompt": prompt}           # 💬 Your actual message that needs security checking
+    if response is not None:
+        content["response"] = response     # 📤 The LLM's reply, when scanning the second half of the turn
+
     payload = {
         "tr_id": transaction_id,           # 🏷️ The tracking number we created above
         "ai_profile": {                    # 🛡️ Which security ruleset to use
             "profile_name": ai_profile_name  # This tells Palo Alto which security rules you want applied
         },
-        "contents": [                      # 📝 The actual content to be scanned
-            {
-                "prompt": prompt           # 💬 Your actual message that needs security checking
-            }
-        ]
+        "metadata": {                      # 🏢 Who is calling, shown in the SCM session and violation views
+            "app_name": APP_NAME,
+            "app_user": APP_USER,
+            "ai_model": CLAUDE_MODEL
+        },
+        "contents": [content]              # 📝 The actual content to be scanned
     }
 
     # Display what we're about to scan
-    print(f"\n🔍 Scanning prompt for security threats...")
+    what = "prompt + response" if response is not None else "prompt"
+    print(f"\n🔍 Scanning {what} for security threats...")
     print(f"   Content: '{prompt[:50]}...' ({len(prompt)} characters)")
 
     try:
@@ -143,18 +167,19 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # This is the actual moment where your message gets sent to Palo Alto Networks
         # for security analysis. Think of it like putting your package in the mail
-        # and sending it to a security inspection facility.
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        # and sending it to a security inspection facility. The timeout stops the
+        # chatbot from hanging forever if the network path is broken.
+        api_response = requests.post(url, headers=headers, json=payload, timeout=30)
 
         # ✅ Check if Palo Alto's servers responded successfully
         # If they return an error code (like 401 Unauthorized or 500 Server Error),
         # this line will detect it and trigger the error handling below.
-        response.raise_for_status()
+        api_response.raise_for_status()
 
         # 📊 Convert Palo Alto's response from JSON text back to Python data
         # Palo Alto sends back their analysis results as JSON text. This line
         # converts that text back into a Python dictionary we can work with.
-        scan_result = response.json()
+        scan_result = api_response.json()
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # 📊 STEP 6: PROCESS PALO ALTO'S SECURITY ANALYSIS RESULTS
@@ -212,30 +237,30 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
         threats_found = False
 
         # ╔══════════════════════════════════════════════════════════════════════════╗
-        # ║                    📊 RESPONSE DETECTION EXPLANATION                     ║
-        # ║  ⚠️  CRITICAL: Understanding how Palo Alto detects response threats      ║
+        # ║                    📊 PROMPT vs RESPONSE DETECTION                       ║
         # ║                                                                          ║
-        # ║  WHAT IS RESPONSE DETECTION?                                             ║
-        # ║  Palo Alto Networks doesn't just scan user inputs - it also predicts    ║
-        # ║  what threats might appear in the AI's response and flags them early.   ║
+        # ║  Prisma AIRS returns two detection maps:                                 ║
+        # ║  • prompt_detected: detectors that fired on the user's message           ║
+        # ║  • response_detected: detectors that fired on the LLM output you SENT    ║
         # ║                                                                          ║
-        # ║  HOW RESPONSE DETECTION WORKS:                                           ║
-        # ║  1. 🧠 AI analyzes the user's message                                    ║
-        # ║  2. 🔮 Predicts what type of response the chatbot might generate         ║
-        # ║  3. 🚨 Identifies if that predicted response could contain threats       ║
-        # ║  4. 🛡️ Blocks messages that might lead to dangerous AI responses        ║
+        # ║  response_detected is only populated when the scan request includes a    ║
+        # ║  "response" field. AIRS does not predict what the model will say; it     ║
+        # ║  inspects what the model actually said. That is why this chatbot scans   ║
+        # ║  twice: prompt first, then prompt + response before anything is shown.   ║
         # ║                                                                          ║
-        # ║  EXAMPLE: User asks "How to hack a website" →                            ║
-        # ║  → Response detection flags that the AI might provide hacking info      ║
-        # ║  → Message gets blocked before AI even processes it                     ║
+        # ║  The two sides also run different detectors. Prompt injection and agent  ║
+        # ║  protection are prompt-side only; database security is response-side    ║
+        # ║  only. A detector that is disabled in the profile is absent from the     ║
+        # ║  map, not false.                                                         ║
         # ╚══════════════════════════════════════════════════════════════════════════╝
-        
+
         # 🔍 PALO ALTO API RESPONSE STRUCTURE DEBUG
         print(f"🔍 PALO ALTO SECURITY API RESPONSE:")
         print(f"   🛡️ Security Category: {scan_result.get('category')}")                  # Overall security verdict
         print(f"   📋 Security Action: {scan_result.get('action')}")                       # What should happen next
-        print(f"   🎯 INPUT Threats: {scan_result.get('prompt_detected', {})}")           # Threats in user's message
-        print(f"   📤 OUTPUT Threats: {scan_result.get('response_detected', {})}")        # Threats in predicted AI response
+        print(f"   🆔 Scan ID: {scan_result.get('scan_id')}  Report ID: {scan_result.get('report_id')}")
+        print(f"   🎯 PROMPT detections: {scan_result.get('prompt_detected', {})}")        # Threats in user's message
+        print(f"   📤 RESPONSE detections: {scan_result.get('response_detected', {})}")    # Threats in the LLM output (if sent)
 
         # Check for prompt-based threats
         prompt_detected = scan_result.get('prompt_detected', {})
@@ -249,25 +274,18 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
 
         # ╔══════════════════════════════════════════════════════════════════════════╗
         # ║                📤 RESPONSE THREAT DETECTION ANALYSIS                    ║
-        # ║  ⚠️  ADVANCED SECURITY: Palo Alto predicts threats in AI responses      ║
         # ║                                                                          ║
-        # ║  HOW THIS PROTECTS YOU:                                                  ║
-        # ║  • 🔮 Analyzes what the AI might say before it says it                   ║
-        # ║  • 🚫 Blocks questions that could lead to dangerous answers             ║
-        # ║  • 🛡️ Prevents AI from accidentally providing harmful information       ║
-        # ║  • 📊 Shows you exactly why a message was flagged                       ║
-        # ║                                                                          ║
-        # ║  EXAMPLE SCENARIOS:                                                      ║
-        # ║  • User: "How to make explosives" → Response detection: AI might       ║
-        # ║    provide dangerous instructions → Message blocked                     ║
-        # ║  • User: "What's my password" → Response detection: AI might leak      ║
-        # ║    sensitive data → Message blocked                                     ║
+        # ║  This block only has content on the second scan of a turn, when the     ║
+        # ║  LLM's reply was included in the request. It tells you what Palo Alto   ║
+        # ║  found in the model's output: leaked sensitive data, malicious URLs or  ║
+        # ║  code, toxic content, or a dangerous database query. If any of these    ║
+        # ║  come back with a block action, the chatbot withholds the reply.        ║
         # ╚══════════════════════════════════════════════════════════════════════════╝
-        
-        # 📤 ANALYZE PREDICTED AI RESPONSE FOR SECURITY THREATS
-        response_detected = scan_result.get('response_detected', {})  # 🔮 Threats Palo Alto predicts in AI response
+
+        # 📤 ANALYZE THE LLM RESPONSE FOR SECURITY THREATS
+        response_detected = scan_result.get('response_detected', {})  # 📤 Threats found in the LLM output we sent
         if response_detected:
-            print(f"\n📤 PREDICTED AI RESPONSE THREATS:")
+            print(f"\n📤 AI RESPONSE THREATS:")
             for threat_type, detected in response_detected.items():
                 if detected:
                     threat_name = threat_categories.get(
@@ -277,20 +295,17 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
 
                     # 💡 PROVIDE SPECIFIC GUIDANCE FOR RESPONSE-LEVEL THREATS
                     if threat_type == 'url_cats' and detected:
-                        print(f"   └─ 🌐 RESPONSE ISSUE: AI might generate malicious URLs")
-                        print(f"   └─ 💡 SOLUTION: Rephrase to avoid requesting potentially harmful links")
+                        print(f"   └─ 🌐 RESPONSE ISSUE: the AI reply contains a malicious URL")
                     elif threat_type == 'db_security' and detected:
-                        print(f"   └─ 🗄️ RESPONSE ISSUE: AI might expose database security information")
-                        print(f"   └─ 💡 SOLUTION: Avoid questions about system internals or security")
+                        print(f"   └─ 🗄️ RESPONSE ISSUE: the AI reply contains a database query your profile blocks")
                     elif threat_type == 'dlp' and detected:
-                        print(f"   └─ 🔒 RESPONSE ISSUE: AI might leak sensitive data in its response")
-                        print(f"   └─ 💡 SOLUTION: Rephrase without requesting personal or confidential info")
+                        print(f"   └─ 🔒 RESPONSE ISSUE: the AI reply contains sensitive data")
                     elif threat_type in ['toxicity', 'toxic_content'] and detected:
-                        print(f"   └─ 💬 RESPONSE ISSUE: AI might generate harmful or offensive content")
-                        print(f"   └─ 💡 SOLUTION: Rephrase using respectful, appropriate language")
+                        print(f"   └─ 💬 RESPONSE ISSUE: the AI reply contains harmful or offensive content")
+                    elif threat_type == 'malicious_code' and detected:
+                        print(f"   └─ 💻 RESPONSE ISSUE: the AI reply contains malicious code")
                     else:
-                        print(f"   └─ ⚠️ RESPONSE ISSUE: AI response might violate security policies")
-                        print(f"   └─ 💡 SOLUTION: Modify your question to be safer and more appropriate")
+                        print(f"   └─ ⚠️ RESPONSE ISSUE: the AI reply violates the security profile")
 
         # Check for additional threat indicators
         if scan_result.get('category') == 'malicious' and not threats_found:
@@ -331,7 +346,7 @@ def scan_prompt_with_paloalto_api(prompt, api_key, ai_profile_name, base_url="ht
     except json.JSONDecodeError as json_err:
         # Server response was not valid JSON
         print(f"❌ JSON Decode Error: {json_err}")
-        print(f"   Raw Response: {response.text}")
+        print(f"   Raw Response: {api_response.text}")
         print("   The server returned malformed data")
         return None
 
@@ -415,9 +430,9 @@ def main():
     print("✅ Palo Alto Networks credentials validated")
 
     # ╔════════════════════════════════════════════════════════════════════════════╗
-    # ║                  🤖 PERPLEXITY AI CREDENTIAL VALIDATION                    ║
+    # ║                   🤖 CLAUDE AI CREDENTIAL VALIDATION                       ║
     # ║                                                                            ║
-    # ║ 🧠 CHATBOT COMPONENT: This section checks your Perplexity credentials     ║
+    # ║ 🧠 CHATBOT COMPONENT: This section checks your Anthropic credentials      ║
     # ║                                                                            ║
     # ║ What's happening: We're verifying you have access to Claude AI            ║
     # ║ service. This is what will generate intelligent responses to your         ║
@@ -491,7 +506,7 @@ def main():
     # ║ 2. 🛡️ SECURITY: Message goes to Palo Alto for threat scanning            ║
     # ║ 3. 📊 DECISION: Based on Palo Alto's analysis, we either:                ║
     # ║    - 🚫 Block dangerous messages (with explanation)                       ║
-    # ║    - ✅ Send safe messages to Perplexity AI for intelligent response      ║
+    # ║    - ✅ Send safe messages to Claude AI for an intelligent response       ║
     # ║ 4. 🔄 Repeat forever until user types "exit"                              ║
     # ║                                                                            ║
     # ║ Key Security Point: The AI NEVER sees dangerous messages!                 ║
@@ -620,9 +635,10 @@ def main():
                         # Claude AI. Claude will analyze your request and generate an
                         # intelligent, thoughtful response using advanced reasoning.
                         response = claude_client.messages.create(
-                            model=CLAUDE_MODEL,  # 🧠 Claude model ID, defaults to claude-sonnet-5
+                            model=CLAUDE_MODEL,  # 🧠 Claude model ID, defaults to claude-sonnet-5-5
                             max_tokens=800,      # 📏 Maximum length of AI response
-                            temperature=0.7,     # 🎚️ Controls creativity (0.0=factual, 1.0=creative)
+                            # No temperature: the anthropic SDK dropped the
+                            # parameter in 2.x and raises TypeError if passed.
                             messages=[
                                 {
                                     "role": "user",           # 👤 This identifies the message as coming from a user
@@ -636,18 +652,46 @@ def main():
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         # Claude sends back a complex response object. We need to extract
                         # just the actual text response that the user wants to see.
-                        ai_response = response.content[0].text
+                        ai_response = "".join(
+                            block.text for block in response.content if getattr(block, "type", "") == "text")
 
-                        # 🎉 SUCCESS! Display the final AI response to the user
-                        # At this point, your message has been:
-                        # 1. ✅ Security scanned by Palo Alto (passed)
-                        # 2. 🧠 Processed by Claude AI (intelligent response generated)  
-                        # 3. 📤 Delivered back to you safely
-                        print("\n" + "=" * 60)
-                        print("🤖 CLAUDE RESPONSE:")
-                        print("=" * 60)
-                        print(ai_response)
-                        print("=" * 60)
+                        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                        # 🛡️ SCAN THE RESPONSE BEFORE SHOWING IT
+                        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                        # The model's output goes back to Palo Alto together with the
+                        # prompt. This is where leaked sensitive data, malicious URLs or
+                        # code, toxic content, and dangerous SQL in the reply get caught.
+                        print("\n🔒 RESPONSE SCANNING PHASE")
+                        print("=" * 50)
+                        response_scan = scan_prompt_with_paloalto_api(
+                            user_input, pan_api_key, pan_ai_profile_name,
+                            response=ai_response)
+
+                        if response_scan is None:
+                            # Fail closed: if we cannot scan the reply, do not show it.
+                            print("\n❌ RESPONSE SCAN FAILED")
+                            print("🤖 Response: The AI reply could not be security scanned,")
+                            print("   so it was not displayed. Please try again.")
+                        elif response_scan.get("category") == "malicious" or response_scan.get("action") == "block":
+                            print("\n🚫 AI RESPONSE BLOCKED BY SECURITY")
+                            print("=" * 40)
+                            print(f"Security Status: {str(response_scan.get('category')).upper()}")
+                            print(f"Action Taken: {str(response_scan.get('action')).upper()}")
+                            print("\n🤖 Response: The AI generated a reply that violates the")
+                            print("   security profile, so it was withheld.")
+                            print("=" * 40)
+                        else:
+                            # 🎉 SUCCESS! Display the final AI response to the user
+                            # At this point, your message has been:
+                            # 1. ✅ Security scanned by Palo Alto (prompt passed)
+                            # 2. 🧠 Processed by Claude AI (intelligent response generated)
+                            # 3. ✅ Security scanned by Palo Alto again (response passed)
+                            # 4. 📤 Delivered back to you safely
+                            print("\n" + "=" * 60)
+                            print("🤖 CLAUDE RESPONSE:")
+                            print("=" * 60)
+                            print(ai_response)
+                            print("=" * 60)
 
                     except Exception as claude_err:
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

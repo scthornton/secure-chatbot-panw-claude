@@ -27,6 +27,7 @@ import os            # ⚙️ SYSTEM: Environment variable management
 import uuid          # 🛡️ SECURITY: Unique transaction IDs for security scans
 import asyncio       # ⚙️ SYSTEM: Asynchronous processing capabilities
 import time          # ⚙️ SYSTEM: Performance timing for security scans
+import getpass       # ⚙️ SYSTEM: Stable app_user value for scan metadata
 from anthropic import Anthropic  # 🧠 AI: Official Anthropic client for Claude
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
@@ -34,28 +35,33 @@ from anthropic import Anthropic  # 🧠 AI: Official Anthropic client for Claude
 # ║  NOT SECURITY OR CHATBOT - THIS IS BASIC SYSTEM CONFIGURATION             ║
 # ║                                                                            ║
 # ║  WHAT THIS DOES:                                                           ║
-# ║  Automatically loads API keys and settings from a .env file if present    ║
-# ║  This includes BOTH security credentials AND chatbot credentials           ║
+# ║  Loads API keys and settings from a .env file if present, using           ║
+# ║  python-dotenv. Real environment variables always win over .env values.   ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
 
-# Load environment variables from .env file if it exists
 try:
-    from pathlib import Path  # ⚙️ SYSTEM: File path handling
-    env_file = Path(".env")
-    if env_file.exists():
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    os.environ[key] = value  # Loads BOTH security AND AI credentials
+    from dotenv import load_dotenv
+    if load_dotenv():
         print("✅ Loaded environment variables from .env file")
-except Exception as e:
-    print(f"⚠️ Could not load .env file: {e}")
+except ImportError:
+    pass  # python-dotenv is optional; export the variables yourself instead
 
 # Claude model to use. Override with the ANTHROPIC_MODEL environment variable
 # (or a line in .env) if you want a different model without editing the code.
-CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+# Model IDs retire over time; check https://docs.anthropic.com/en/docs/about-claude/models
+CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+
+# Prisma AIRS regional endpoint. US is the default; set PANW_AI_SEC_ENDPOINT to
+# the EU (service-de), India (service-in), or Singapore (service-sg) host when
+# your API key was issued in that region. Keys are region-specific.
+PANW_AI_SEC_ENDPOINT = os.getenv(
+    "PANW_AI_SEC_ENDPOINT", "https://service.api.aisecurity.paloaltonetworks.com"
+).rstrip("/")
+
+# Metadata attached to every scan. app_name and app_user show up in the Strata
+# Cloud Manager session and violation views.
+APP_NAME = os.getenv("PANW_AI_SEC_APP_NAME", "secure-chatbot-claude-sdk")
+APP_USER = os.getenv("PANW_AI_SEC_APP_USER", getpass.getuser())
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║                🛡️ PALO ALTO NETWORKS SECURITY SDK IMPORT                  ║
@@ -145,7 +151,7 @@ class SDKSecurityScanner:
         # 🛡️ PALO ALTO NETWORKS SECURITY CONFIGURATION
         self.api_key = api_key  # 🔑 Security authentication key
         self.profile_name = profile_name  # 📋 Security policy profile
-        self.api_endpoint = api_endpoint or "https://service.api.aisecurity.paloaltonetworks.com"  # 🌐 Security service URL
+        self.api_endpoint = (api_endpoint or PANW_AI_SEC_ENDPOINT).rstrip("/")  # 🌐 Security service URL (regional)
         self.num_retries = num_retries  # 🔄 Retry policy for security reliability
 
         # 🏗️ INITIALIZE PALO ALTO NETWORKS SDK (SECURITY ONLY)
@@ -170,15 +176,16 @@ class SDKSecurityScanner:
             'toxicity': 'Toxic Content',                     # 🚫 Harassment and hate speech
         }
 
-    def create_scan_request(self, prompt):
+    def create_scan_request(self, prompt, response=None):
         """
         📋 SECURITY REQUEST BUILDER - PALO ALTO NETWORKS FORMAT
-        
+
         ⚠️  THIS IS PURE SECURITY FUNCTIONALITY - NO CHATBOT CODE!
-        
+
         SECURITY PURPOSE:
-        Takes a user's message and packages it into the exact format required
-        by Palo Alto Networks security servers for comprehensive threat analysis.
+        Takes a user's message (and, on the second scan of a turn, the LLM's
+        reply) and packages it into the exact format required by Palo Alto
+        Networks security servers for comprehensive threat analysis.
         
         WHAT GETS SCANNED FOR SECURITY:
         • Prompt injection attempts (malicious instructions)
@@ -195,14 +202,22 @@ class SDKSecurityScanner:
             ai_profile_data = {"profile_name": self.profile_name}  # 📋 Your custom security policy
             
             # 📝 CONTENT TO BE SECURITY SCANNED
-            # This packages the user's message for threat analysis
+            # This packages the user's message for threat analysis. When the
+            # LLM reply is supplied, it rides along so AIRS can inspect it too.
             content_data = {"prompt": prompt}  # 💬 User message to scan for threats
+            if response is not None:
+                content_data["response"] = response  # 📤 LLM output to scan
 
             # 📦 COMPLETE SECURITY SCAN REQUEST STRUCTURE
             # This creates the full request that Palo Alto's servers expect
             request_data = {
                 "tr_id": str(uuid.uuid4()),        # 🆔 Unique security transaction ID
                 "ai_profile": ai_profile_data,     # 📋 Security policy to apply
+                "metadata": {                      # 🏢 Attribution shown in SCM sessions/violations
+                    "app_name": APP_NAME,
+                    "app_user": APP_USER,
+                    "ai_model": CLAUDE_MODEL
+                },
                 "contents": [content_data]         # 💬 Content to scan for threats
             }
 
@@ -281,16 +296,22 @@ class SDKSecurityScanner:
             # ╚══════════════════════════════════════════════════════════════════════╝
             
             except requests.exceptions.HTTPError as e:
-                # 🔑 SECURITY AUTHENTICATION ERRORS
-                if e.response.status_code == 401:
+                status = e.response.status_code
+                # 🔑 SECURITY AUTHENTICATION ERRORS (retrying will not help)
+                if status == 401:
                     raise AISecSDKException(
-                        f"Security authentication failed: Invalid Palo Alto API key")
-                elif e.response.status_code == 404:
+                        "Security authentication failed: invalid or expired Palo Alto API key")
+                # 📋 BAD REQUEST: AIRS returns 400 for an unknown or misspelled
+                # profile name (profile names are case-sensitive) and for
+                # malformed payloads. Retrying will not help either.
+                elif status == 400:
                     raise AISecSDKException(
-                        f"Security profile not found: {self.profile_name}")
+                        f"Security scan rejected (HTTP 400): {e.response.text.strip()} "
+                        f"- check PANW_AI_SEC_PROFILE_NAME ('{self.profile_name}')")
+                # ⏳ RATE LIMIT or SERVER ERROR: fall through and retry with backoff
                 elif attempt == self.num_retries:
                     raise AISecSDKException(
-                        f"Security HTTP Error after {self.num_retries} retries: {e}")
+                        f"Security HTTP error {status} after {self.num_retries} retries: {e}")
 
             except requests.exceptions.ConnectionError as e:
                 # 🌐 SECURITY NETWORK CONNECTION ERRORS
@@ -304,7 +325,7 @@ class SDKSecurityScanner:
                     raise AISecSDKException(
                         f"Security request timeout after {self.num_retries} retries: {e}")
 
-    def sync_scan(self, prompt):
+    def sync_scan(self, prompt, response=None):
         """
         🔍 SYNCHRONOUS SECURITY SCAN - COMPREHENSIVE THREAT ANALYSIS
         
@@ -325,6 +346,7 @@ class SDKSecurityScanner:
 
         Args:
             prompt (str): The user's message to scan for security threats
+            response (str, optional): The LLM reply to scan together with the prompt
 
         Returns:
             dict: Detailed security analysis with threat categories and recommendations
@@ -333,14 +355,15 @@ class SDKSecurityScanner:
         start_time = time.time()  # 🕐 Start timing the security scan
 
         # 📊 SECURITY SCAN STATUS REPORTING
-        print(f"🔍 Palo Alto Networks SDK Security Scan Starting...")
+        what = "prompt + response" if response is not None else "prompt"
+        print(f"🔍 Palo Alto Networks SDK Security Scan Starting ({what})...")
         print(f"   Content: '{prompt[:50]}...' ({len(prompt)} characters)")  # 📝 Preview of content being scanned
         print(f"   Security Profile: {self.profile_name}")                    # 📋 Which security rules are active
         print(f"   Security Endpoint: {self.config.api_endpoint}")             # 🌐 Palo Alto security server
 
         # 📋 CREATE SECURITY SCAN REQUEST
-        # Step 1: Package the user's message for Palo Alto analysis
-        request_data = self.create_scan_request(prompt)  # 🛡️ SECURITY: Format message for scanning
+        # Step 1: Package the message (and optional reply) for Palo Alto analysis
+        request_data = self.create_scan_request(prompt, response)  # 🛡️ SECURITY: Format content for scanning
         print(f"   Security Transaction ID: {request_data['tr_id']}")  # 🆔 Unique ID for this security check
 
         # 🚀 EXECUTE SECURITY SCAN
@@ -353,7 +376,7 @@ class SDKSecurityScanner:
 
         return scan_result  # 📤 Return complete security analysis
 
-    async def async_scan(self, prompt):
+    async def async_scan(self, prompt, response=None):
         """
         ⚡ ASYNCHRONOUS SECURITY SCAN - HIGH-PERFORMANCE THREAT DETECTION
         
@@ -379,8 +402,8 @@ class SDKSecurityScanner:
         """
         # 🔄 ASYNC SECURITY EXECUTION
         # Runs the security scan without blocking other operations
-        loop = asyncio.get_event_loop()  # ⚙️ Get async event loop
-        return await loop.run_in_executor(None, self.sync_scan, prompt)  # 🛡️ SECURITY: Non-blocking threat scan
+        loop = asyncio.get_running_loop()  # ⚙️ The loop asyncio.run() created for main()
+        return await loop.run_in_executor(None, self.sync_scan, prompt, response)  # 🛡️ SECURITY: Non-blocking threat scan
 
     def display_enhanced_results(self, scan_result):
         """
@@ -431,33 +454,28 @@ class SDKSecurityScanner:
         threats_found = False  # 🔍 Track if any security threats were detected
 
         # ╔══════════════════════════════════════════════════════════════════════════╗
-        # ║                    📊 RESPONSE DETECTION EXPLANATION                     ║
-        # ║  ⚠️  ADVANCED SECURITY: Understanding Palo Alto's response prediction    ║
+        # ║                    📊 PROMPT vs RESPONSE DETECTION                       ║
         # ║                                                                          ║
-        # ║  WHAT IS RESPONSE DETECTION?                                             ║
-        # ║  Palo Alto's AI doesn't just scan your message - it also uses machine   ║
-        # ║  learning to predict what the chatbot might respond with, and blocks    ║
-        # ║  messages that could lead to dangerous or inappropriate AI answers.     ║
+        # ║  Prisma AIRS returns two detection maps:                                 ║
+        # ║  • prompt_detected: detectors that fired on the user's message           ║
+        # ║  • response_detected: detectors that fired on the LLM output you SENT    ║
         # ║                                                                          ║
-        # ║  SOPHISTICATED AI PROTECTION PROCESS:                                   ║
-        # ║  1. 🧠 Advanced AI analyzes your message content                         ║
-        # ║  2. 🔮 Predicts multiple possible chatbot response scenarios            ║
-        # ║  3. 🚨 Identifies which predicted responses might contain threats        ║
-        # ║  4. 🛡️ Proactively blocks risky messages before AI processing           ║
+        # ║  response_detected is only populated when the scan request includes a    ║
+        # ║  "response" field. AIRS does not predict what the model will say; it     ║
+        # ║  inspects what the model actually said. That is why this chatbot scans   ║
+        # ║  twice per turn: prompt first, then prompt + response before display.    ║
         # ║                                                                          ║
-        # ║  ENTERPRISE EXAMPLE:                                                     ║
-        # ║  User: "How do I break into systems?" →                                  ║
-        # ║  → Response detection: "AI might provide hacking instructions"          ║
-        # ║  → Message blocked before chatbot ever sees it                         ║
-        # ║  → Prevents accidental security information disclosure                  ║
+        # ║  The two sides run different detectors. Prompt injection and agent       ║
+        # ║  protection are prompt-side only; database security is response-side    ║
+        # ║  only. A detector disabled in the profile is absent from the map.        ║
         # ╚══════════════════════════════════════════════════════════════════════════╝
-        
+
         # 🔍 PALO ALTO NETWORKS SECURITY SCAN DEBUG INFORMATION
         print(f"🛡️ PALO ALTO NETWORKS SECURITY SCAN DETAILS:")
         print(f"   🚦 Security Category: {scan_result.get('category')}")                    # 🛡️ Overall security classification
         print(f"   📋 Security Action: {scan_result.get('action')}")                        # 🚦 Recommended security action
-        print(f"   🎯 INPUT Threats: {scan_result.get('prompt_detected', {})}")           # 🚨 Threats in user's message
-        print(f"   📤 OUTPUT Threats: {scan_result.get('response_detected', {})}")        # 🚨 Predicted threats in AI response
+        print(f"   🎯 PROMPT detections: {scan_result.get('prompt_detected', {})}")        # 🚨 Threats in user's message
+        print(f"   📤 RESPONSE detections: {scan_result.get('response_detected', {})}")    # 🚨 Threats in the LLM output (if sent)
 
         # ╔══════════════════════════════════════════════════════════════════════╗
         # ║            🎯 INPUT SECURITY THREAT ANALYSIS                         ║
@@ -495,54 +513,39 @@ class SDKSecurityScanner:
 
         # ╔══════════════════════════════════════════════════════════════════════════╗
         # ║                📤 RESPONSE THREAT DETECTION ANALYSIS                    ║
-        # ║  ⚠️  ADVANCED SECURITY: Palo Alto's AI response prediction system       ║
         # ║                                                                          ║
-        # ║  RESPONSE DETECTION PURPOSE:                                             ║
-        # ║  This is Palo Alto's most advanced security feature - it uses AI to    ║
-        # ║  predict what your chatbot might say and blocks dangerous questions     ║
-        # ║  before they can lead to harmful AI responses.                         ║
-        # ║                                                                          ║
-        # ║  HOW RESPONSE PREDICTION WORKS:                                         ║
-        # ║  1. 🤖 Palo Alto's AI simulates what Claude might respond               ║
-        # ║  2. 🔍 Analyzes those simulated responses for security violations       ║
-        # ║  3. 🚫 Blocks your original message if responses would be dangerous     ║
-        # ║  4. 💡 Provides specific guidance on how to fix your message            ║
-        # ║                                                                          ║
-        # ║  ENTERPRISE SECURITY EXAMPLE:                                           ║
-        # ║  User: "How do criminals launder money?" →                              ║
-        # ║  → Palo Alto predicts: "AI might explain money laundering techniques"  ║
-        # ║  → Result: Message blocked to prevent financial crime information       ║
-        # ║  → User gets guidance: "Ask about legal financial compliance instead"  ║
+        # ║  Only populated on the second scan of a turn, when the Claude reply was ║
+        # ║  included in the request. It reports what Palo Alto found in the        ║
+        # ║  model's actual output: leaked sensitive data, malicious URLs or code,  ║
+        # ║  toxic content, or a dangerous database query. A block verdict here     ║
+        # ║  means the chatbot withholds the reply.                                 ║
         # ╚══════════════════════════════════════════════════════════════════════════╝
-        
-        # 📤 ANALYZE PREDICTED AI RESPONSE FOR SECURITY THREATS
-        response_detected = scan_result.get('response_detected', {})  # 🔮 Threats Palo Alto predicts in AI response
+
+        # 📤 ANALYZE THE LLM RESPONSE FOR SECURITY THREATS
+        response_detected = scan_result.get('response_detected', {})  # 📤 Threats found in the LLM output we sent
         if response_detected:
-            print(f"\n📤 PREDICTED CLAUDE AI RESPONSE THREATS:")
+            print(f"\n📤 CLAUDE RESPONSE THREATS:")
             for threat_type, detected in response_detected.items():
                 if detected:
                     # 📚 TRANSLATE SECURITY CODES TO HUMAN-FRIENDLY LANGUAGE
                     threat_name = self.threat_categories.get(
                         threat_type, threat_type.replace('_', ' ').title())
-                    print(f"   🔴 RESPONSE THREAT: {threat_name} predicted in AI output")
-                    threats_found = True  # 🚨 Flag that security threats were predicted
-                    
+                    print(f"   🔴 RESPONSE THREAT: {threat_name} found in AI output")
+                    threats_found = True  # 🚨 Flag that security threats were found
+
                     # 💡 PROVIDE DETAILED GUIDANCE FOR RESPONSE-LEVEL THREATS
                     if threat_type == 'url_cats' and detected:
-                        print(f"      └─ 🌐 PREDICTION: Claude AI might generate malicious URLs")
-                        print(f"      └─ 💡 SECURITY FIX: Rephrase to avoid requesting potentially harmful links")
+                        print(f"      └─ 🌐 The reply contains a URL in a blocked category")
                     elif threat_type == 'dlp' and detected:
-                        print(f"      └─ 🔒 PREDICTION: Claude AI might leak sensitive data")
-                        print(f"      └─ 💡 SECURITY FIX: Avoid requesting personal or confidential information")
+                        print(f"      └─ 🔒 The reply contains sensitive data matched by the DLP profile")
                     elif threat_type in ['toxicity', 'toxic_content'] and detected:
-                        print(f"      └─ 💬 PREDICTION: Claude AI might generate harmful content")
-                        print(f"      └─ 💡 SECURITY FIX: Use respectful, appropriate language in your question")
-                    elif threat_type in ['injection', 'prompt_injection'] and detected:
-                        print(f"      └─ ⚡ PREDICTION: AI might be tricked into malicious behavior")
-                        print(f"      └─ 💡 SECURITY FIX: Remove command-like or instructional language")
+                        print(f"      └─ 💬 The reply contains harmful or offensive content")
+                    elif threat_type == 'malicious_code' and detected:
+                        print(f"      └─ 💻 The reply contains malicious code")
+                    elif threat_type == 'db_security' and detected:
+                        print(f"      └─ 🗄️ The reply contains a database query your profile blocks")
                     else:
-                        print(f"      └─ ⚠️ PREDICTION: AI response might violate security policies")
-                        print(f"      └─ 💡 SECURITY FIX: Modify your question to be safer and more appropriate")
+                        print(f"      └─ ⚠️ The reply violates the security profile")
 
         # ╔══════════════════════════════════════════════════════════════════════╗
         # ║              🚦 FINAL SECURITY ASSESSMENT                           ║
@@ -720,9 +723,10 @@ async def main():
 
                     try:
                         response = claude_client.messages.create(
-                            model=CLAUDE_MODEL,  # Claude model ID, defaults to claude-sonnet-5
+                            model=CLAUDE_MODEL,  # Claude model ID, defaults to claude-sonnet-5-5
                             max_tokens=800,
-                            temperature=0.7,
+                            # No temperature: the anthropic SDK dropped the
+                            # parameter in 2.x and raises TypeError if passed.
                             messages=[
                                 {
                                     "role": "user",
@@ -731,13 +735,32 @@ async def main():
                             ]
                         )
 
-                        ai_response = response.content[0].text
+                        ai_response = "".join(
+                            block.text for block in response.content if getattr(block, "type", "") == "text")
 
-                        print("\n" + "=" * 60)
-                        print("🤖 CLAUDE RESPONSE:")
-                        print("=" * 60)
-                        print(ai_response)
-                        print("=" * 60)
+                        # 🛡️ SCAN THE RESPONSE BEFORE SHOWING IT
+                        # The model output goes back to Palo Alto with the prompt so
+                        # leaked data, malicious URLs or code, toxic content, and
+                        # dangerous SQL in the reply are caught before display.
+                        print("\n🔒 PYTHON SDK RESPONSE SCANNING")
+                        print("=" * 50)
+                        response_scan = await scanner.async_scan(user_input, ai_response)
+                        scanner.display_enhanced_results(response_scan)
+
+                        if response_scan.get("category") == "malicious" or response_scan.get("action") == "block":
+                            print("\n🚫 AI RESPONSE BLOCKED BY SDK SECURITY")
+                            print("=" * 50)
+                            print(f"Security Status: {str(response_scan.get('category')).upper()}")
+                            print(f"Action Taken: {str(response_scan.get('action')).upper()}")
+                            print("\n🤖 SDK Response: The AI generated a reply that violates the")
+                            print("   security profile, so it was withheld.")
+                            print("=" * 50)
+                        else:
+                            print("\n" + "=" * 60)
+                            print("🤖 CLAUDE RESPONSE:")
+                            print("=" * 60)
+                            print(ai_response)
+                            print("=" * 60)
 
                     except Exception as claude_err:
                         print(f"\n❌ CLAUDE ERROR: {claude_err}")

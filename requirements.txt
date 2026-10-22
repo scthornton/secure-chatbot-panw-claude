@@ -2,53 +2,34 @@
 # SECURE AI CHATBOT WITH ANTHROPIC CLAUDE - PYTHON DEPENDENCIES
 # ===========================================================================
 #
-# This file contains all the Python packages required to run the secure chatbot.
-# Install these dependencies by running: pip install -r requirements.txt
-#
+# Install with: pip install -r requirements.txt
+# Everything here comes from public PyPI. No extra index URL is needed.
 # Requires Python 3.10+ (pan-aisecurity minimum).
 #
 # ===========================================================================
 
-# Core HTTP and networking libraries
-requests>=2.31.0          # For making HTTP requests to APIs
-httpx>=0.25.0            # Advanced HTTP client for modern applications
-urllib3>=2.0.0           # HTTP client library (requests dependency)
+# HTTP client used for the Prisma AIRS scan calls
+requests>=2.31.0
 
 # Anthropic Claude client (the AI model this chatbot talks to)
-anthropic>=0.40.0        # Official Anthropic Python library for the Claude API
+# Verified against anthropic 0.40+ and 2.x; the chatbot only uses
+# Anthropic(api_key=...) and messages.create().
+anthropic>=0.40.0
 
-# JSON and data handling
-pydantic>=2.0.0          # Data validation and parsing
+# Palo Alto Networks AI Runtime Security SDK
+# Published on public PyPI as "pan-aisecurity"; the importable module is
+# "aisecurity". Used by secure_chatbot_claude_sdk.py.
+pan-aisecurity>=0.4.0
 
-# Palo Alto Networks AI Security SDK (Enterprise Security)
-pan-aisecurity>=0.4.0    # Official Palo Alto Networks AI Security Python SDK
-
-# Async processing capabilities
-asyncio-throttle>=1.0.0  # Rate limiting for async operations (optional)
-
-# Development and debugging (optional - remove for production)
-python-dotenv>=1.0.0     # Load environment variables from .env files
+# Loads .env into the environment (real environment variables win)
+python-dotenv>=1.0.0
 
 # ===========================================================================
-# PRODUCTION DEPLOYMENT NOTES
+# NOTES
 # ===========================================================================
 #
-# PACKAGE SECURITY:
-# - All packages are pinned to minimum safe versions
-# - Regularly update packages to get security patches
-# - Use 'pip list --outdated' to check for updates
-# - Consider using 'pip-audit' to scan for vulnerabilities
-#
-# ENTERPRISE CONSIDERATIONS:
-# - Use private package repositories for better security
-# - Implement dependency scanning in your CI/CD pipeline
-# - Consider using virtual environments or containers
-# - Document any custom package sources or modifications
-#
-# SECURITY SCANNING:
-# Run these commands periodically:
-# - pip-audit                    # Scan for known vulnerabilities
-# - safety check                 # Alternative security scanner
-# - pip list --outdated         # Check for package updates
+# - Run `pip-audit` or `safety check` periodically to catch vulnerable pins.
+# - For a reproducible install, pin exact versions after your first
+#   successful run: pip freeze > requirements.lock
 #
 # ===========================================================================
