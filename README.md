@@ -14,7 +14,9 @@
 
 ## 🌟 Overview
 
-**🔒 Development Security Demo**: Every message is scanned for threats before AI processing, demonstrating integration between Palo Alto Networks APIs and Claude AI for development and testing purposes.
+**🔒 Development Security Demo**: Every prompt is scanned for threats before it reaches the model, and every model response is scanned before it is shown to the user. It demonstrates integration between the Palo Alto Networks Prisma AIRS Runtime API and Anthropic Claude for development and testing purposes.
+
+Looking for the same app routed through the **Prisma AIRS AI Gateway** instead of calling the scan API directly? See [secure-chatbot-panw-gateway](https://github.com/scthornton/secure-chatbot-panw-gateway).
 
 ---
 
@@ -47,13 +49,19 @@
 
 ### **Step 1: Installation**
 
-```bash
-# Clone or extract the secure chatbot files
-cd secure-chatbot-claude
+Python 3.10 or newer is required.
 
-# Install required Python packages
+```bash
+git clone https://github.com/scthornton/secure-chatbot-panw-claude.git
+cd secure-chatbot-panw-claude
+
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
+
+Prefer a guided setup? `python3 setup_script.py` does the same steps and creates `.env` for you.
 
 ### **Step 2: Configuration**
 
@@ -66,30 +74,35 @@ cp .env.example .env
 2. Edit `.env` with your API credentials:
 
 ```bash
-# Palo Alto Networks AI Security
+# Palo Alto Networks Prisma AIRS
 PANW_AI_SEC_API_KEY=your_palo_alto_api_key_here
 PANW_AI_SEC_PROFILE_NAME=your_security_profile_name
+# Optional: regional endpoint (US is the default). Keys are region-specific.
+# PANW_AI_SEC_ENDPOINT=https://service-de.api.aisecurity.paloaltonetworks.com
 
 # Anthropic Claude AI
 ANTHROPIC_API_KEY=your_claude_api_key_here
+# Optional: model override (default claude-sonnet-5-5)
+# ANTHROPIC_MODEL=claude-opus-5-5
 ```
 
 ### **Step 3: Run the Chatbot**
 
 ```bash
-# Basic version (Direct HTTP API)
+# Basic version (direct HTTP calls to the scan API)
 python3 secure_chatbot_claude_api.py
 
-# Advanced version (Python SDK with enhanced features)
+# SDK version (pan-aisecurity configuration, retries, timing)
 python3 secure_chatbot_claude_sdk.py
 ```
 
 ### **Step 4: Start Chatting Safely!**
 
 - Type your questions naturally
-- Each message gets security scanned automatically
-- Safe messages get intelligent Claude AI responses with advanced reasoning
-- Dangerous messages are blocked with detailed explanations
+- Each prompt is scanned before it is sent to Claude
+- Each Claude response is scanned before it is displayed
+- Blocked prompts and blocked responses are explained with the detectors that fired
+- Scans carry `app_name` and `app_user` metadata, so they are easy to find in Strata Cloud Manager
 
 ---
 
@@ -154,11 +167,23 @@ python3 secure_chatbot_claude_sdk.py
                                     │
                                     ▼
                       ┌─────────────────────────────────┐
+                      │  🛡️ PALO ALTO RESPONSE SCAN     │
+                      │  (prompt + response together)   │
+                      │                                 │
+                      │  • Sensitive data in the reply  │
+                      │  • Malicious URLs / code        │
+                      │  • Toxic content                │
+                      │  • Database security            │
+                      └─────────────┬───────────────────┘
+                                    │
+                        block ◄─────┴─────► allow
+                                              │
+                                              ▼
+                      ┌─────────────────────────────────┐
                       │     📤 SECURE AI RESPONSE       │
                       │                                 │
                       │  • Verified Safe Content        │
-                      │  • Intelligent & Current        │
-                      │  • Audit Trail Logged          │
+                      │  • Audit Trail Logged           │
                       └─────────────────────────────────┘
 ```
 
@@ -192,14 +217,17 @@ ACT:      Immediate blocking or forwarding to AI processing
 ## 📁 Project Structure
 
 ```
-secure-chatbot-claude/
+secure-chatbot-panw-claude/
 ├── 🚀 secure_chatbot_claude_api.py        # Main chatbot (HTTP API)
 ├── 🛡️ secure_chatbot_claude_sdk.py        # Advanced chatbot (Python SDK)
+├── ⚙️ setup_script.py                      # Optional guided setup
 ├── 🔧 requirements.txt                     # Python dependencies
 ├── 📝 .env.example                         # Environment template
 ├── 📖 README.md                            # This documentation
-├── 🎯 DEPLOYMENT_GUIDE.md                  # Production deployment guide
-└── 📊 MONITORING_GUIDE.md                  # Operations and monitoring
+├── 🎯 DEPLOYMENT_GUIDE.md                  # Dev/test deployment guide
+├── 📦 CUSTOMER_PACKAGE.md                  # What to hand a customer
+├── 🔐 SECURITY.md                          # How to report a security issue
+└── 📄 LICENSE                              # MIT
 ```
 
 ---
@@ -319,25 +347,23 @@ AUDIT - Security events, blocked messages
 #### **❌ "Invalid API Key" Error**
 
 ```
-Symptoms: 403 Forbidden responses
-Diagnosis: Check API key validity and permissions
+Symptoms: HTTP 401 Unauthorized from the scan API
+Diagnosis: Missing, mistyped, expired, or wrong-region API key
 Solutions:
-- Verify API key in .env file (no extra spaces)
-- Check key expiration date
-- Confirm key has required permissions
-- Test key with API provider's test endpoint
+- Verify PANW_AI_SEC_API_KEY in .env (no quotes or extra spaces)
+- Check the key's expiration / next rotation date in Strata Cloud Manager
+- Keys are region-specific: a US key does not work against service-de
 ```
 
 #### **❌ "Profile Not Found" Error**
 
 ```
-Symptoms: 404 Not Found for security profile
-Diagnosis: Profile name mismatch or inactive profile
+Symptoms: HTTP 400 Bad Request from the scan API
+Diagnosis: Profile name mismatch (names are case-sensitive)
 Solutions:
-- Verify exact profile name (case-sensitive)
-- Check profile exists in Strata Cloud Manager
-- Ensure profile is active and properly configured
-- Contact Palo Alto Networks support if needed
+- Copy the exact profile name from Strata Cloud Manager
+- Confirm the profile is deployed, not just saved
+- Confirm the profile belongs to the same tenant as the API key
 ```
 
 #### **❌ "Connection Timeout" Error**
@@ -377,21 +403,16 @@ Solutions:
 
 ### **AI Model Selection**
 
-```python
-# Available Claude Models
-models = [
-    "claude-3-haiku-20240307",      # Fast, cost-effective
-    "claude-3-sonnet-20240229",     # Balanced performance and quality
-    "claude-3-opus-20240229",       # Maximum capability and reasoning
-]
-```
+The default model is `claude-sonnet-5-5`. Set `ANTHROPIC_MODEL` in `.env` to any
+current Claude model (for example `claude-opus-5-5` or `claude-haiku-5-5`).
+Model IDs retire over time, so check
+https://docs.anthropic.com/en/docs/about-claude/models rather than pinning an
+old one.
 
 ### **Response Customization**
 
-- **Tone and Style**: Configure AI personality
-- **Response Length**: Set minimum/maximum response tokens
-- **Search Integration**: Enable/disable web search
-- **Citations**: Include/exclude source references
+- **Tone and Style**: Add a `system` parameter to the `messages.create` call
+- **Response Length**: Adjust `max_tokens` (currently 800)
 
 ---
 
@@ -461,13 +482,15 @@ models = [
 
 ---
 
-*For technical support or questions about this implementation, contact your designated technical team or the solution provider.*
+## 📄 License
+
+MIT. See [LICENSE](LICENSE).
 
 ---
 
 ## Contact
 
-**Scott Thornton** — AI Security Researcher
+**Scott Thornton** - AI Security Researcher
 
 - Website: [perfecxion.ai](https://perfecxion.ai/)
 - Email: [scott@perfecxion.ai](mailto:scott@perfecxion.ai)
